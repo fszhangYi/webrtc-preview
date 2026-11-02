@@ -1,0 +1,797 @@
+<!DOCTYPE html>
+<html lang="zh-CN" data-theme="dark">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>WebRTC Preview</title>
+  <style>
+    :root {
+      --bg: #0b1018;
+      --panel: rgba(18, 26, 38, 0.9);
+      --border: rgba(58, 77, 102, 0.75);
+      --text: #e7ecf3;
+      --muted: #8b9bb4;
+      --accent: #3dd6c6;
+      --accent-dim: rgba(61, 214, 198, 0.14);
+      --spark: #f0b429;
+      --danger: #f87171;
+      --ok: #4ade80;
+      --warn: #fbbf24;
+      --input-bg: rgba(8, 12, 20, 0.85);
+      --chrome: rgba(26, 35, 50, 0.88);
+      --brand-title: linear-gradient(120deg, #e7ecf3 25%, #3dd6c6 70%, #f0b429 100%);
+      --bg-spot: radial-gradient(ellipse 80% 50% at 10% -10%, rgba(61, 214, 198, 0.12), transparent 50%);
+      --bg-spot-2: radial-gradient(ellipse 60% 40% at 90% 0%, rgba(240, 180, 41, 0.08), transparent 45%);
+      --font: "IBM Plex Sans", "Segoe UI", "PingFang SC", "Noto Sans SC", sans-serif;
+      --mono: "IBM Plex Mono", ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+      --motion-ease: cubic-bezier(0.22, 1, 0.36, 1);
+    }
+    * { box-sizing: border-box; }
+    [hidden] { display: none !important; }
+    html, body {
+      margin: 0; min-height: 100%;
+      background: var(--bg);
+      background-image: var(--bg-spot), var(--bg-spot-2);
+      color: var(--text);
+      font-family: var(--font);
+      font-size: 13.5px;
+    }
+    .preview-page { min-height: 100vh; display: flex; flex-direction: column; }
+    header {
+      position: sticky; top: 0; z-index: 10;
+      display: flex; align-items: center; gap: 0.75rem; flex-wrap: wrap;
+      padding: 0.75rem 1rem;
+      background: var(--chrome);
+      backdrop-filter: blur(8px);
+      border-bottom: 1px solid var(--border);
+    }
+    .brand {
+      font-size: 1.15rem; font-weight: 650;
+      background: var(--brand-title);
+      -webkit-background-clip: text; background-clip: text;
+      color: transparent;
+      margin-right: 0.5rem;
+    }
+    .pill {
+      display: inline-flex; align-items: center;
+      border: 1px solid var(--border);
+      border-radius: 999px;
+      padding: 0.2rem 0.65rem;
+      color: var(--muted);
+      font-size: 0.78rem;
+    }
+    .pill.ok { border-color: rgba(74, 222, 128, 0.55); color: var(--ok); }
+    .pill.warn { border-color: rgba(251, 191, 36, 0.55); color: var(--warn); }
+    .pill.err { border-color: rgba(248, 113, 113, 0.55); color: var(--danger); }
+    input[type="text"] {
+      flex: 1; min-width: 16rem;
+      background: var(--input-bg);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      color: var(--text);
+      padding: 0.45rem 0.7rem;
+      font-family: var(--mono);
+      font-size: 0.82rem;
+    }
+    button {
+      border-radius: 999px;
+      border: 1px solid var(--border);
+      background: transparent;
+      color: var(--text);
+      padding: 0.4rem 0.9rem;
+      cursor: pointer;
+      font: inherit;
+      transition: border-color 160ms var(--motion-ease), background 160ms var(--motion-ease);
+    }
+    button.primary {
+      background: linear-gradient(120deg, rgba(61,214,198,0.35), rgba(61,214,198,0.12));
+      border-color: rgba(61, 214, 198, 0.65);
+    }
+    button.danger {
+      border-color: rgba(248, 113, 113, 0.55);
+      color: var(--danger);
+    }
+    button.danger:hover { border-color: var(--danger); background: rgba(248, 113, 113, 0.1); }
+    .header-spacer { flex: 1; min-width: 0.5rem; }
+    button:hover { border-color: var(--accent); }
+    button:disabled { opacity: 0.45; cursor: not-allowed; }
+    main {
+      padding: 1rem; flex: 1;
+      display: grid; grid-template-columns: 280px 1fr; gap: 1rem;
+    }
+    @media (max-width: 900px) { main { grid-template-columns: 1fr; } }
+    .panel {
+      background: var(--panel);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 0.85rem;
+    }
+    .panel h2 {
+      margin: 0 0 0.65rem;
+      font-size: 0.72rem;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      color: var(--muted);
+      font-weight: 600;
+    }
+    .stream-list { display: flex; flex-direction: column; gap: 0.35rem; max-height: 70vh; overflow: auto; }
+    .stream-item {
+      display: flex; align-items: flex-start; gap: 0.5rem;
+      padding: 0.45rem 0.5rem;
+      border-radius: 8px;
+      border: 1px solid transparent;
+    }
+    .stream-item:hover { border-color: var(--border); background: var(--accent-dim); }
+    .stream-item label { flex: 1; cursor: pointer; }
+    .stream-item .meta { display: block; font-family: var(--mono); font-size: 0.72rem; color: var(--muted); }
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+      gap: 0.75rem;
+    }
+    .tile {
+      background: #05080e;
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      overflow: hidden;
+      display: flex; flex-direction: column;
+      min-height: 200px;
+    }
+    .tile header {
+      position: static; padding: 0.4rem 0.65rem;
+      font-size: 0.78rem; gap: 0.4rem;
+      background: rgba(10, 14, 22, 0.9);
+      display: flex; align-items: center; flex-wrap: wrap;
+    }
+    .tile header strong { flex: 1; min-width: 0; }
+    .tile video {
+      width: 100%; aspect-ratio: 16/10; object-fit: contain; background: #000;
+      flex: 1;
+    }
+    .tile .sensor-body {
+      flex: 1; padding: 0.65rem 0.75rem 0.85rem;
+      display: flex; flex-direction: column; gap: 0.45rem;
+      min-height: 160px;
+    }
+    .tile .sensor-kind {
+      font-family: var(--mono); font-size: 0.7rem; color: var(--muted);
+    }
+    .joint-row {
+      display: grid; grid-template-columns: 1.6rem 1fr 3.2rem;
+      gap: 0.35rem; align-items: center;
+      font-family: var(--mono); font-size: 0.72rem;
+    }
+    .joint-row .bar-track {
+      height: 8px; border-radius: 999px;
+      background: rgba(58, 77, 102, 0.45);
+      overflow: hidden;
+    }
+    .joint-row .bar-fill {
+      height: 100%; border-radius: 999px;
+      background: linear-gradient(90deg, var(--accent), var(--spark));
+      width: 0%;
+      transition: width 120ms linear;
+    }
+    .joint-row .val { text-align: right; color: var(--text); }
+    .gauge-wrap { margin-top: 0.35rem; }
+    .gauge-label { font-size: 0.75rem; color: var(--muted); margin-bottom: 0.25rem; }
+    .gauge-value {
+      font-family: var(--mono); font-size: 1.6rem; font-weight: 650;
+      color: var(--accent); letter-spacing: 0.02em;
+    }
+    .gauge-track {
+      margin-top: 0.45rem; height: 10px; border-radius: 999px;
+      background: rgba(58, 77, 102, 0.45); overflow: hidden;
+    }
+    .gauge-fill {
+      height: 100%; width: 0%;
+      background: linear-gradient(90deg, var(--accent), var(--spark));
+      transition: width 120ms linear;
+    }
+    .kv-grid {
+      display: grid; grid-template-columns: auto 1fr;
+      gap: 0.2rem 0.65rem;
+      font-family: var(--mono); font-size: 0.72rem;
+    }
+    .kv-grid .k { color: var(--muted); }
+    .kv-grid .v { color: var(--text); word-break: break-all; }
+    .hint { color: var(--muted); font-size: 0.85rem; line-height: 1.45; }
+    .err-banner {
+      margin: 0 1rem; padding: 0.55rem 0.75rem;
+      border: 1px solid rgba(248, 113, 113, 0.45);
+      border-radius: 8px;
+      color: var(--danger);
+      background: rgba(248, 113, 113, 0.08);
+    }
+    .live-empty {
+      color: var(--muted); font-size: 0.9rem; padding: 1.5rem 0.5rem;
+    }
+  </style>
+</head>
+<body>
+  <div class="preview-page">
+    <header>
+      <div class="brand">WebRTC Preview</div>
+      <span class="pill" id="statusPill">idle</span>
+      <input type="text" id="catalogUrl" placeholder="http://master:7011/api/preview/catalog" spellcheck="false" />
+      <button type="button" class="primary" id="btnLoad">拉取目录</button>
+      <button type="button" id="btnRefresh" title="重新拉取 catalog，并断开已消失的流">刷新</button>
+      <button type="button" id="btnConnect" disabled>连接所选</button>
+      <button type="button" id="btnDisconnect" disabled>全部断开</button>
+      <span class="header-spacer"></span>
+      <button type="button" id="btnRestart" title="校验 catalog 后整进程替换（H2）">重启后端</button>
+      <button type="button" class="danger" id="btnExit" title="安全关闭本进程（H1）">安全关闭</button>
+    </header>
+    <div class="err-banner" id="errBanner" hidden></div>
+    <main>
+      <aside class="panel">
+        <h2>Streams</h2>
+        <div class="hint" id="revHint">尚未加载 catalog</div>
+        <div class="stream-list" id="streamList"></div>
+      </aside>
+      <section class="panel">
+        <h2>Live</h2>
+        <div class="hint" id="liveHint">勾选左侧流后点「连接所选」；相机与传感器同格展示，仅显示已连接项</div>
+        <div class="grid" id="liveGrid"></div>
+      </section>
+    </main>
+  </div>
+  <script>
+(function () {
+  const statusPill = document.getElementById('statusPill');
+  const catalogUrl = document.getElementById('catalogUrl');
+  const btnLoad = document.getElementById('btnLoad');
+  const btnRefresh = document.getElementById('btnRefresh');
+  const btnConnect = document.getElementById('btnConnect');
+  const btnDisconnect = document.getElementById('btnDisconnect');
+  const btnRestart = document.getElementById('btnRestart');
+  const btnExit = document.getElementById('btnExit');
+  const streamList = document.getElementById('streamList');
+  const liveGrid = document.getElementById('liveGrid');
+  const liveHint = document.getElementById('liveHint');
+  const revHint = document.getElementById('revHint');
+  const errBanner = document.getElementById('errBanner');
+
+  /** @type {any} */
+  let catalog = null;
+  /**
+   * @type {Map<string, {
+   *   pc: RTCPeerConnection,
+   *   stationId: string,
+   *   kind: string,
+   *   agentId: string|null,
+   *   label: string,
+   *   media: 'video'|'datachannel',
+   *   tile: HTMLElement,
+   *   pill: HTMLElement|null,
+   *   video: HTMLVideoElement|null,
+   *   body: HTMLElement|null,
+   * }>}
+   */
+  const peers = new Map();
+  const TELEMETRY_DC = 'sensors-preview';
+
+  function qs(name) {
+    try { return new URLSearchParams(location.search).get(name); } catch (e) { return null; }
+  }
+  function setStatus(text, cls) {
+    statusPill.textContent = text || '—';
+    statusPill.className = 'pill' + (cls ? (' ' + cls) : '');
+  }
+  function showErr(msg) {
+    if (!msg) { errBanner.hidden = true; errBanner.textContent = ''; return; }
+    errBanner.hidden = false;
+    errBanner.textContent = String(msg);
+  }
+  function streamKey(s) {
+    return s.stream_id || (s.station_id + '/' + s.agent_id);
+  }
+  function safeTileId(streamId) {
+    return 'tile-' + String(streamId).replace(/[^a-zA-Z0-9_-]/g, '_');
+  }
+  function isSensorStream(s) {
+    if (!s) return false;
+    const hint = s.offer_body_hint || {};
+    if (s.media === 'datachannel' || !!hint.telemetry_only || !!hint.telemetry_agent_id) return true;
+    if (s.kind === 'telemetry') return true;
+    return s.media !== 'video' && s.kind && s.kind !== 'camera';
+  }
+  function selectedIds() {
+    return Array.from(streamList.querySelectorAll('input[type=checkbox]:checked')).map((el) => el.value);
+  }
+
+  const initial = qs('catalog') || '';
+  if (initial) catalogUrl.value = initial;
+
+  function renderList() {
+    const prevChecked = new Set(selectedIds());
+    const hadSelection = streamList.querySelectorAll('input[type=checkbox]').length > 0;
+    streamList.innerHTML = '';
+    const streams = (catalog && catalog.streams) || [];
+    streams.forEach((s) => {
+      const id = streamKey(s);
+      const row = document.createElement('div');
+      row.className = 'stream-item';
+      const cb = document.createElement('input');
+      cb.type = 'checkbox';
+      cb.value = id;
+      cb.disabled = !s.enabled || !s.signaling_url;
+      // Keep prior checks on refresh; first load: check enabled streams.
+      cb.checked = hadSelection ? prevChecked.has(id) : (!!s.enabled && !cb.disabled);
+      const lab = document.createElement('label');
+      const media = isSensorStream(s) ? 'sensor' : 'camera';
+      lab.appendChild(document.createTextNode(s.label || s.agent_id || id));
+      const meta = document.createElement('span');
+      meta.className = 'meta';
+      meta.textContent = media + ' · ' + (s.kind || '') + ' · ' + id
+        + (s.enabled ? '' : ' · disabled')
+        + (s.signaling_url ? '' : ' · no url');
+      lab.appendChild(meta);
+      row.appendChild(cb);
+      row.appendChild(lab);
+      streamList.appendChild(row);
+    });
+    btnConnect.disabled = streams.length === 0;
+    revHint.textContent = catalog
+      ? ('rev ' + (catalog.rev || '—') + ' · ' + streams.length + ' streams · scope ' + (catalog.scope || '—'))
+      : '尚未加载 catalog';
+    updateLiveHint();
+  }
+
+  function updateLiveHint() {
+    if (!liveHint) return;
+    if (peers.size === 0) {
+      liveHint.textContent = '勾选左侧流后点「连接所选」；相机与传感器同格展示，仅显示已连接项';
+      return;
+    }
+    let cams = 0; let sensors = 0;
+    peers.forEach((p) => { if (p.media === 'video') cams += 1; else sensors += 1; });
+    liveHint.textContent = '已连接 ' + peers.size + ' · 相机 ' + cams + ' · 传感器 ' + sensors;
+  }
+
+  function removePeer(sid) {
+    const ent = peers.get(sid);
+    if (!ent) return;
+    try { ent.pc.close(); } catch (e) {}
+    peers.delete(sid);
+    if (ent.tile && ent.tile.parentNode) ent.tile.remove();
+    btnDisconnect.disabled = peers.size === 0;
+    updateLiveHint();
+  }
+
+  function prunePeersNotInCatalog(cat) {
+    const alive = new Set(((cat && cat.streams) || []).map(streamKey));
+    for (const sid of Array.from(peers.keys())) {
+      if (!alive.has(sid)) removePeer(sid);
+    }
+  }
+
+  /** Sync LIVE to checkbox selection: drop unchecked peers, connect missing checked. */
+  async function syncToSelection() {
+    showErr('');
+    if (!catalog) return;
+    const ids = new Set(selectedIds());
+    for (const sid of Array.from(peers.keys())) {
+      if (!ids.has(sid)) removePeer(sid);
+    }
+    const streams = (catalog.streams || []).filter((s) => ids.has(streamKey(s)));
+    setStatus('sync ' + streams.length, 'warn');
+    for (const s of streams) {
+      if (!s.enabled || !s.signaling_url) continue;
+      await connectOne(s);
+    }
+    setStatus('peers ' + peers.size, peers.size ? 'ok' : 'warn');
+    updateLiveHint();
+  }
+
+  function ensureCameraTile(streamId, label) {
+    const id = safeTileId(streamId);
+    let tile = document.getElementById(id);
+    if (tile) return tile;
+    tile = document.createElement('div');
+    tile.className = 'tile';
+    tile.id = id;
+    tile.dataset.streamId = streamId;
+    const hd = document.createElement('header');
+    hd.innerHTML = '<strong></strong><span class="pill">connecting</span>';
+    hd.querySelector('strong').textContent = label || streamId;
+    const video = document.createElement('video');
+    video.autoplay = true;
+    video.playsInline = true;
+    video.muted = true;
+    tile.appendChild(hd);
+    tile.appendChild(video);
+    liveGrid.appendChild(tile);
+    return tile;
+  }
+
+  function ensureSensorTile(streamId, label, kind) {
+    const id = safeTileId(streamId);
+    let tile = document.getElementById(id);
+    if (tile) return tile;
+    tile = document.createElement('div');
+    tile.className = 'tile';
+    tile.id = id;
+    tile.dataset.streamId = streamId;
+    const hd = document.createElement('header');
+    hd.innerHTML = '<strong></strong><span class="pill">connecting</span>';
+    hd.querySelector('strong').textContent = label || streamId;
+    const body = document.createElement('div');
+    body.className = 'sensor-body';
+    body.innerHTML = '<div class="sensor-kind"></div><div class="sensor-viz hint">等待数据…</div>';
+    body.querySelector('.sensor-kind').textContent = kind || 'sensor';
+    tile.appendChild(hd);
+    tile.appendChild(body);
+    liveGrid.appendChild(tile);
+    return tile;
+  }
+
+  function findJoints(payload) {
+    if (!payload || typeof payload !== 'object') return null;
+    const keys = ['joints_rad', 'joints_deg', 'q', 'joint_positions', 'feedback_joints_rad', 'joints_rad_raw'];
+    for (const k of keys) {
+      const v = payload[k];
+      if (Array.isArray(v) && v.length && typeof v[0] === 'number') {
+        return { key: k, values: v, degrees: /deg/i.test(k) };
+      }
+    }
+    return null;
+  }
+
+  function findGripperScalar(payload) {
+    if (!payload || typeof payload !== 'object') return null;
+    const keys = ['position_norm', 'width_m', 'width', 'position', 'opening', 'grip'];
+    for (const k of keys) {
+      const v = payload[k];
+      if (typeof v === 'number' && Number.isFinite(v)) return { key: k, value: v };
+    }
+    return null;
+  }
+
+  function renderJointBars(container, joints) {
+    const maxAbs = joints.degrees ? 180 : Math.PI;
+    container.innerHTML = '';
+    const title = document.createElement('div');
+    title.className = 'sensor-kind';
+    title.textContent = joints.key + (joints.degrees ? ' (deg)' : ' (rad)');
+    container.appendChild(title);
+    joints.values.forEach((raw, i) => {
+      const v = Number(raw);
+      const row = document.createElement('div');
+      row.className = 'joint-row';
+      const pct = Math.max(0, Math.min(100, ((v + maxAbs) / (2 * maxAbs)) * 100));
+      row.innerHTML = '<span>j' + i + '</span><div class="bar-track"><div class="bar-fill"></div></div><span class="val"></span>';
+      row.querySelector('.bar-fill').style.width = pct.toFixed(1) + '%';
+      row.querySelector('.val').textContent = (Number.isFinite(v) ? v.toFixed(3) : '—');
+      container.appendChild(row);
+    });
+  }
+
+  function renderGripper(container, g) {
+    container.innerHTML = '';
+    const wrap = document.createElement('div');
+    wrap.className = 'gauge-wrap';
+    const label = document.createElement('div');
+    label.className = 'gauge-label';
+    label.textContent = g.key;
+    const val = document.createElement('div');
+    val.className = 'gauge-value';
+    val.textContent = Number(g.value).toFixed(4);
+    const track = document.createElement('div');
+    track.className = 'gauge-track';
+    const fill = document.createElement('div');
+    fill.className = 'gauge-fill';
+    // Heuristic: position_norm ~0..1; else clamp to 0..abs or 0..1
+    let pct = g.value;
+    if (g.key === 'position_norm' || (g.value >= 0 && g.value <= 1.5)) {
+      pct = Math.max(0, Math.min(1, g.value)) * 100;
+    } else {
+      pct = Math.max(0, Math.min(100, Math.abs(g.value) * 100));
+    }
+    fill.style.width = pct.toFixed(1) + '%';
+    track.appendChild(fill);
+    wrap.appendChild(label);
+    wrap.appendChild(val);
+    wrap.appendChild(track);
+    container.appendChild(wrap);
+  }
+
+  function renderKv(container, payload) {
+    container.innerHTML = '';
+    const grid = document.createElement('div');
+    grid.className = 'kv-grid';
+    const skip = new Set(['jpeg_b64', 'jpeg_b64_preview', 'depth', 'image', 'rgb']);
+    let n = 0;
+    Object.keys(payload || {}).forEach((k) => {
+      if (skip.has(k) || n >= 12) return;
+      const v = payload[k];
+      if (v == null) return;
+      if (typeof v === 'object') return;
+      const kk = document.createElement('div');
+      kk.className = 'k';
+      kk.textContent = k;
+      const vv = document.createElement('div');
+      vv.className = 'v';
+      vv.textContent = typeof v === 'number' ? (Number.isInteger(v) ? String(v) : v.toFixed(4)) : String(v);
+      grid.appendChild(kk);
+      grid.appendChild(vv);
+      n += 1;
+    });
+    if (!n) {
+      container.innerHTML = '<div class="hint">无标量字段</div>';
+      return;
+    }
+    container.appendChild(grid);
+  }
+
+  function updateSensorTile(ent, msg) {
+    if (!ent || !ent.body) return;
+    const viz = ent.body.querySelector('.sensor-viz') || ent.body;
+    const agents = (msg && msg.agents) || {};
+    const aid = ent.agentId || msg.agent_id;
+    const sample = (aid && agents[aid]) || agents[Object.keys(agents)[0]] || null;
+    const kindEl = ent.body.querySelector('.sensor-kind');
+    if (kindEl) {
+      const k = (sample && sample.kind) || ent.kind || 'sensor';
+      const seq = sample && sample.seq != null ? (' · seq ' + sample.seq) : '';
+      kindEl.textContent = k + seq;
+    }
+    if (!sample) {
+      viz.className = 'sensor-viz hint';
+      viz.textContent = '等待数据…';
+      return;
+    }
+    if (sample.error) {
+      viz.className = 'sensor-viz hint';
+      viz.style.color = 'var(--danger)';
+      viz.textContent = String(sample.error);
+      return;
+    }
+    viz.style.color = '';
+    viz.className = 'sensor-viz';
+    const payload = sample.payload || {};
+    const joints = findJoints(payload);
+    if (joints) {
+      renderJointBars(viz, joints);
+      return;
+    }
+    const grip = findGripperScalar(payload);
+    if (grip) {
+      renderGripper(viz, grip);
+      // also show armed if present
+      if (typeof payload.armed === 'boolean') {
+        const extra = document.createElement('div');
+        extra.className = 'sensor-kind';
+        extra.textContent = 'armed: ' + payload.armed;
+        viz.appendChild(extra);
+      }
+      return;
+    }
+    renderKv(viz, payload);
+  }
+
+  function bindTelemetryChannel(ch, sid) {
+    if (!ch) return;
+    ch.binaryType = 'arraybuffer';
+    ch.onmessage = (mev) => {
+      if (!peers.has(sid)) return;
+      const ent = peers.get(sid);
+      let raw = mev.data;
+      if (typeof raw !== 'string') {
+        if (raw instanceof ArrayBuffer) {
+          try { raw = new TextDecoder().decode(raw); } catch (e) { return; }
+        } else if (typeof Blob !== 'undefined' && raw instanceof Blob) {
+          raw.text().then((t) => {
+            if (!peers.has(sid)) return;
+            try { updateSensorTile(peers.get(sid), JSON.parse(t)); } catch (e) {}
+          });
+          return;
+        } else return;
+      }
+      try { updateSensorTile(ent, JSON.parse(raw)); } catch (e) {}
+    };
+  }
+
+  async function connectOne(stream) {
+    const sid = streamKey(stream);
+    if (peers.has(sid)) return;
+    const stationId = stream.station_id || sid.split('/')[0] || 'unknown';
+    const hint = stream.offer_body_hint || {};
+    const sensor = isSensorStream(stream);
+    const sensorId = hint.telemetry_agent_id || stream.agent_id || null;
+    const label = stream.label || stream.agent_id || sid;
+    const pc = new RTCPeerConnection({ iceServers: [] });
+
+    let tile; let pill; let video = null; let body = null;
+    if (sensor) {
+      tile = ensureSensorTile(sid, label, stream.kind || 'sensor');
+      pill = tile.querySelector('.pill');
+      body = tile.querySelector('.sensor-body');
+      peers.set(sid, {
+        pc, stationId, kind: stream.kind || 'sensor', agentId: sensorId,
+        label, media: 'datachannel', tile, pill, video: null, body,
+      });
+      try {
+        bindTelemetryChannel(pc.createDataChannel(TELEMETRY_DC), sid);
+      } catch (e) {
+        showErr('DataChannel: ' + e);
+        removePeer(sid);
+        return;
+      }
+    } else {
+      tile = ensureCameraTile(sid, label);
+      video = tile.querySelector('video');
+      pill = tile.querySelector('.pill');
+      peers.set(sid, {
+        pc, stationId, kind: 'camera', agentId: stream.agent_id || null,
+        label, media: 'video', tile, pill, video, body: null,
+      });
+      pc.addTransceiver('video', { direction: 'recvonly' });
+      pc.ontrack = (ev) => {
+        if (video && ev.streams && ev.streams[0]) video.srcObject = ev.streams[0];
+      };
+    }
+
+    pc.onconnectionstatechange = () => {
+      const ent = peers.get(sid);
+      if (ent && ent.pill) {
+        ent.pill.textContent = pc.connectionState;
+        ent.pill.className = 'pill ' + (
+          pc.connectionState === 'connected' ? 'ok'
+            : (pc.connectionState === 'failed' ? 'err' : 'warn')
+        );
+      }
+      if (pc.connectionState === 'failed' || pc.connectionState === 'closed') {
+        removePeer(sid);
+      }
+    };
+
+    try {
+      const offer = await pc.createOffer();
+      await pc.setLocalDescription(offer);
+      const bodyReq = {
+        sdp: offer.sdp,
+        telemetry_only: !!sensor,
+        telemetry_agent_id: sensor ? sensorId : null,
+        camera_agent_id: sensor ? null : (hint.camera_agent_id || stream.agent_id || null),
+        agent_id: hint.agent_id || null,
+      };
+      const r = await fetch(stream.signaling_url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(bodyReq),
+      });
+      const ans = await r.json();
+      if (!ans.ok) throw new Error(ans.error || JSON.stringify(ans));
+      await pc.setRemoteDescription({ type: ans.type || 'answer', sdp: ans.sdp });
+      btnDisconnect.disabled = false;
+      updateLiveHint();
+    } catch (e) {
+      if (pill) { pill.textContent = 'error'; pill.className = 'pill err'; }
+      showErr(sid + ': ' + e);
+      removePeer(sid);
+    }
+  }
+
+  async function loadCatalog() {
+    showErr('');
+    setStatus('loading…', 'warn');
+    const url = (catalogUrl.value || '').trim();
+    try {
+      const r = await fetch('/api/catalog', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ url }),
+      });
+      const j = await r.json();
+      if (!j.ok) {
+        showErr(j.error || 'load failed');
+        setStatus('error', 'err');
+        catalog = null;
+        renderList();
+        return;
+      }
+      catalog = j;
+      if (j.catalog_url) catalogUrl.value = j.catalog_url;
+      prunePeersNotInCatalog(catalog);
+      setStatus('catalog ok · peers ' + peers.size, 'ok');
+      renderList();
+    } catch (e) {
+      showErr(String(e));
+      setStatus('error', 'err');
+    }
+  }
+
+  async function refreshCatalog() {
+    const prevRev = catalog && catalog.rev;
+    await loadCatalog();
+    if (catalog && prevRev && catalog.rev !== prevRev) {
+      setStatus('refreshed · rev changed · peers ' + peers.size, 'ok');
+    } else if (catalog) {
+      setStatus('refreshed · peers ' + peers.size, peers.size ? 'ok' : 'warn');
+    }
+  }
+
+  function disconnectAll() {
+    for (const sid of Array.from(peers.keys())) removePeer(sid);
+    liveGrid.innerHTML = '';
+    btnDisconnect.disabled = true;
+    setStatus('disconnected', 'warn');
+    updateLiveHint();
+  }
+
+  btnLoad.addEventListener('click', () => { loadCatalog(); });
+  if (btnRefresh) btnRefresh.addEventListener('click', () => { refreshCatalog(); });
+  btnConnect.addEventListener('click', () => { syncToSelection(); });
+  btnDisconnect.addEventListener('click', () => { disconnectAll(); });
+
+  if (btnExit) {
+    btnExit.addEventListener('click', async () => {
+      if (!confirm('安全关闭将结束本预览进程。正在进行的 WebRTC 连接会断开。')) return;
+      btnExit.disabled = true;
+      setStatus('正在退出…', 'warn');
+      try {
+        await fetch('/api/shutdown', { method: 'POST' });
+        setStatus('退出已发出', 'warn');
+      } catch {
+        setStatus('退出已发出', 'warn');
+      }
+    });
+  }
+
+  if (btnRestart) {
+    btnRestart.addEventListener('click', async () => {
+      const path = (catalogUrl.value || '').trim();
+      if (!path) {
+        showErr('请先填写 catalog URL，再重启后端');
+        return;
+      }
+      if (!confirm('将以当前 catalog 重启后端进程？\n' + path)) return;
+      btnRestart.disabled = true;
+      setStatus('正在重启…', 'warn');
+      showErr('');
+      try {
+        const r = await fetch('/api/runtime/apply-config', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ path }),
+        });
+        const data = await r.json();
+        if (!data.ok) {
+          showErr(data.error || '重启失败');
+          setStatus('重启失败', 'err');
+          btnRestart.disabled = false;
+          return;
+        }
+        const started = Date.now();
+        const poll = async () => {
+          if (Date.now() - started > 45000) {
+            showErr('重启超时，请查看终端日志');
+            setStatus('重启超时', 'err');
+            btnRestart.disabled = false;
+            return;
+          }
+          await new Promise((resolve) => setTimeout(resolve, 800));
+          try {
+            const health = await fetch('/api/health', { cache: 'no-store' });
+            if (health.ok) {
+              location.reload();
+              return;
+            }
+          } catch { /* process is restarting */ }
+          poll();
+        };
+        poll();
+      } catch (err) {
+        showErr(err instanceof Error ? err.message : String(err));
+        setStatus('重启失败', 'err');
+        btnRestart.disabled = false;
+      }
+    });
+  }
+
+  if (catalogUrl.value) loadCatalog();
+})();
+  </script>
+</body>
+</html>
