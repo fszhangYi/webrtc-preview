@@ -51,7 +51,7 @@ start_desktop.bat      :: PyQt WebEngine 壳
 
 CLI：`python -m webrtc_preview_app web [--open] [--catalog …]`；`--open` 才开浏览器。`start_web.bat` **不带** `--open`。
 
-DCS「打开预览软件」按钮会打开本应用并带上 `?catalog=...`（见 DCS `GET /api/preview/open-url`）。
+DCS「打开预览软件」会先确保本后端在跑（必要时由 DCS 拉起 `python -m webrtc_preview_app web`），再打开浏览器并带上 `?catalog=...`（`POST /api/preview/open`）。后端地址可配：DCS YAML `runtime.preview_app_url`、环境变量 `WEBRTC_PREVIEW_URL`，或 DCS 设置页「预览软件」。
 
 ## 鉴权 / CORS
 
